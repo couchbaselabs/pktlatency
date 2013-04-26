@@ -57,7 +57,7 @@ func stream(filename string, rchan chan<- reportMsg) time.Duration {
 	}
 	defer h.Close()
 
-	clients := make(map[string]chan []byte)
+	clients := make(map[string]chan bsinput)
 	servers := make(map[string]bool)
 
 	defer func() {
@@ -83,22 +83,24 @@ func stream(filename string, rchan chan<- reportMsg) time.Duration {
 				isServer = true
 			}
 
-			if !isServer {
+			if isServer {
+				// Do something clever here.
+			} else {
 				ch := clients[sender]
 				if ch == nil {
-					ch = make(chan []byte, channelSize)
+					ch = make(chan bsinput, channelSize)
 					childrenWG.Add(1)
 					go consumer(sender, NewByteSource(ch, rchan))
 					clients[sender] = ch
-					// log.Printf("Inferred connect from " + sender)
+					log.Printf("Inferred connect from " + sender)
 				}
 				if len(pkt.Payload) > 0 {
-					ch <- pkt.Payload
+					ch <- bsinput{pkt.Time.Time(), pkt.Payload}
 				}
 				if tcp.Flags&(pcap.TCP_SYN|pcap.TCP_RST) != 0 && !isAck {
 					close(clients[sender])
 					delete(clients, sender)
-					// log.Printf("Disconnect from " + sender)
+					log.Printf("Disconnect from " + sender)
 				}
 			}
 		}

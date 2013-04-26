@@ -14,26 +14,33 @@ import (
 	"github.com/dustin/gomemcached/server"
 )
 
+type bsinput struct {
+	t time.Time
+	b []byte
+}
+
 type bytesource struct {
-	ch       <-chan []byte
+	ch       <-chan bsinput
 	reporter chan<- reportMsg
 	current  []byte
+	ts       time.Time
 }
 
 func (b *bytesource) Read(out []byte) (int, error) {
 	if len(b.current) == 0 {
-		var ok bool
-		b.current, ok = <-b.ch
+		pkt, ok := <-b.ch
 		if !ok {
 			return 0, io.EOF
 		}
+		b.ts = pkt.t
+		b.current = pkt.b
 	}
 	copied := copy(out, b.current)
 	b.current = b.current[copied:]
 	return copied, nil
 }
 
-func NewByteSource(from <-chan []byte, rchan chan<- reportMsg) *bytesource {
+func NewByteSource(from <-chan bsinput, rchan chan<- reportMsg) *bytesource {
 	return &bytesource{ch: from, reporter: rchan}
 }
 
@@ -64,7 +71,7 @@ func processRequest(name string, ch *bytesource, req *gomemcached.MCRequest,
 	client *mc.Client) {
 
 	if *verbose {
-		log.Printf("%v", *req)
+		log.Printf("%v: %v", ch.ts, *req)
 	}
 	if client != nil {
 		client.Transmit(req)
@@ -85,8 +92,7 @@ func allArePrintable(s string) bool {
 }
 
 func saneKey(req *gomemcached.MCRequest) bool {
-	return len(req.Key) >= 1 &&
-		len(req.Key) < 250 &&
+	return len(req.Key) == 20 &&
 		utf8.Valid(req.Key) &&
 		allArePrintable(string(req.Key))
 }
@@ -185,7 +191,7 @@ func consumer(name string, ch *bytesource) {
 	}
 	// Just read the thing to completion.
 	for bytes := range ch.ch {
-		dnu += uint64(len(bytes))
+		dnu += uint64(len(bytes.b))
 	}
 	log.Printf("Processed %d messages, skipped %s from %s",
 		msgs, humanize.Bytes(dnu), name)
