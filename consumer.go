@@ -10,7 +10,6 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/dustin/gomemcached"
-	mc "github.com/dustin/gomemcached/client"
 	"github.com/dustin/gomemcached/server"
 )
 
@@ -67,16 +66,10 @@ func readUntil(r *bufio.Reader, b byte) (skipped uint64, err error) {
 	panic("Unreachable")
 }
 
-func processRequest(name string, ch *bytesource, req *gomemcached.MCRequest,
-	client *mc.Client) {
-
+func processRequest(name string, ch *bytesource, req *gomemcached.MCRequest) {
 	if *verbose {
 		log.Printf("%v: %v", ch.ts, *req)
 	}
-	if client != nil {
-		client.Transmit(req)
-	}
-	// log.Printf("from %v: %v", name, pkt)
 	ch.reporter <- reportMsg{req: req, from: name, ts: ch.ts}
 }
 
@@ -143,37 +136,8 @@ func serverLooksValid(req *gomemcached.MCRequest) bool {
 	return looksValid(req, serverValidators)
 }
 
-func mcResponseConsumer(client *mc.Client) {
-	defer childrenWG.Done()
-	for {
-		res, err := client.Receive()
-		if err != nil {
-			if err != io.EOF {
-				log.Printf("Error in receive.  I think we're done: %v", err)
-			}
-			return
-		}
-		if res.Status != 0 {
-			log.Printf("Memcached error:  %v", res)
-		}
-	}
-}
-
 func clientconsumer(name string, ch *bytesource) {
 	defer childrenWG.Done()
-
-	var client *mc.Client
-	if *server != "" {
-		var err error
-		client, err = mc.Connect("tcp", *server)
-		if err == nil {
-			defer client.Close()
-			childrenWG.Add(1)
-			go mcResponseConsumer(client)
-		} else {
-			log.Printf("Error connecting to memcached server: %v", err)
-		}
-	}
 
 	msgs := 0
 	rd := bufio.NewReader(ch)
@@ -184,7 +148,7 @@ func clientconsumer(name string, ch *bytesource) {
 		switch {
 		case err == nil:
 			if clientLooksValid(&pkt) {
-				processRequest(name, ch, &pkt, client)
+				processRequest(name, ch, &pkt)
 			} else {
 				log.Printf("Invalid request found: op=%v, klen=%v, bodylen=%v",
 					pkt.Opcode, len(pkt.Key), len(pkt.Body))

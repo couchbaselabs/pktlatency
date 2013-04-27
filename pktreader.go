@@ -18,8 +18,6 @@ var dumpJson = flag.Bool("dumpjson", false,
 	"Dump op -> vbucket map discovered in trace")
 var maxBodyLen = flag.Uint("maxBodyLen", uint(memcached.MaxBodyLen),
 	"Maximum body length of a valid packet")
-var server = flag.String("server", "localhost:11211",
-	"memcached server to connect to")
 var verbose = flag.Bool("v", false, "print out all the things")
 var threshold = flag.Duration("thresh", time.Millisecond*3,
 	"Threshold for reporting performance")
