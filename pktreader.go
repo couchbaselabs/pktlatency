@@ -23,6 +23,7 @@ var server = flag.String("server", "localhost:11211",
 var verbose = flag.Bool("v", false, "print out all the things")
 var threshold = flag.Duration("thresh", time.Millisecond*3,
 	"Threshold for reporting performance")
+var reportFile = flag.String("report", "", "Path to csv report to produce")
 
 const channelSize = 10000
 

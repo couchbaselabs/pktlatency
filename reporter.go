@@ -4,6 +4,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strconv"
@@ -36,11 +37,15 @@ func has(haystack []int, needle int) bool {
 func reportLatency(ch <-chan reportMsg, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	outf, err := os.Create(",report.csv")
-	if err != nil {
-		log.Fatalf("Error creating report file:  %v", err)
+	var outf io.Writer
+	if *reportFile != "" {
+		f, err := os.Create(*reportFile)
+		if err != nil {
+			log.Fatalf("Error creating report file:  %v", err)
+		}
+		defer f.Close()
+		outf = f
 	}
-	defer outf.Close()
 
 	cw := csv.NewWriter(outf)
 	defer cw.Flush()
