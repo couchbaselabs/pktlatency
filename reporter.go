@@ -2,17 +2,13 @@ package main
 
 import (
 	"encoding/csv"
-	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"os"
 	"strconv"
 	"sync"
-	"text/tabwriter"
 	"time"
 
-	"github.com/dustin/go-humanize"
 	"github.com/dustin/gomemcached"
 )
 
@@ -23,15 +19,6 @@ type reportMsg struct {
 	ts       time.Time
 	isServer bool
 	final    bool
-}
-
-func has(haystack []int, needle int) bool {
-	for _, v := range haystack {
-		if v == needle {
-			return true
-		}
-	}
-	return false
 }
 
 func reportLatency(ch <-chan reportMsg, wg *sync.WaitGroup) {
@@ -98,47 +85,4 @@ func reportLatency(ch <-chan reportMsg, wg *sync.WaitGroup) {
 
 	log.Printf("Processed %v packets.  %v above, %v below. %v left in flight",
 		above+below, above, below, len(inflight))
-}
-
-func report(ch <-chan reportMsg, wg *sync.WaitGroup) {
-	counts := [256]uint64{}
-	var dnu uint64
-	vbuckets := map[string][]int{}
-	for msg := range ch {
-		if msg.req != nil {
-			counts[int(msg.req.Opcode)]++
-			vb := int(msg.req.VBucket)
-			ops := msg.req.Opcode.String()
-			if l, ok := vbuckets[ops]; ok {
-				if !has(l, vb) {
-					vbuckets[ops] = append(l, vb)
-				}
-			} else {
-				vbuckets[ops] = []int{vb}
-			}
-		} else {
-			dnu += msg.dnu
-		}
-	}
-
-	tw := tabwriter.NewWriter(os.Stdout, 8, 4, 2, ' ', 0)
-	for id, count := range counts {
-		if count > 0 {
-			cmd := gomemcached.CommandCode(id).String()
-			fmt.Fprintf(tw, "%s\t%d\n", cmd, count)
-		}
-	}
-	tw.Flush()
-
-	if *dumpJson {
-		log.Printf("Vbuckets in use:")
-		err := json.NewEncoder(os.Stdout).Encode(vbuckets)
-		if err != nil {
-			log.Printf("Error in JSON encoding:  %v", err)
-		}
-	}
-
-	log.Printf("Did not understand %s bytes", humanize.Bytes(dnu))
-
-	wg.Done()
 }
