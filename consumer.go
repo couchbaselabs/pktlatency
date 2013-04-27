@@ -77,7 +77,7 @@ func processRequest(name string, ch *bytesource, req *gomemcached.MCRequest,
 		client.Transmit(req)
 	}
 	// log.Printf("from %v: %v", name, pkt)
-	ch.reporter <- reportMsg{req: req}
+	ch.reporter <- reportMsg{req: req, from: name, ts: ch.ts}
 }
 
 type validator func(*gomemcached.MCRequest) bool
@@ -96,10 +96,11 @@ func saneKey(req *gomemcached.MCRequest) bool {
 		utf8.Valid(req.Key) &&
 		allArePrintable(string(req.Key))
 }
+func noKey(req *gomemcached.MCRequest) bool   { return len(req.Key) == 0 }
 func noBody(req *gomemcached.MCRequest) bool  { return len(req.Body) == 0 }
 func hasBody(req *gomemcached.MCRequest) bool { return len(req.Body) > 0 }
 
-var validators = map[gomemcached.CommandCode][]validator{
+var clientValidators = map[gomemcached.CommandCode][]validator{
 	gomemcached.GET:    {saneKey, noBody},
 	gomemcached.GETQ:   {saneKey, noBody},
 	gomemcached.DELETE: {saneKey, noBody},
@@ -109,7 +110,16 @@ var validators = map[gomemcached.CommandCode][]validator{
 	gomemcached.ADDQ:   {saneKey, hasBody},
 }
 
-func looksValid(req *gomemcached.MCRequest) bool {
+var serverValidators = map[gomemcached.CommandCode][]validator{
+	gomemcached.GET:    {noKey, hasBody},
+	gomemcached.GETQ:   {noKey, hasBody},
+	gomemcached.DELETE: {noKey, noBody},
+	gomemcached.SET:    {noKey, noBody},
+	gomemcached.ADD:    {noKey, noBody},
+}
+
+func looksValid(req *gomemcached.MCRequest,
+	validators map[gomemcached.CommandCode][]validator) bool {
 
 	vs, ok := validators[req.Opcode]
 	if !ok {
@@ -123,6 +133,14 @@ func looksValid(req *gomemcached.MCRequest) bool {
 	}
 
 	return true
+}
+
+func clientLooksValid(req *gomemcached.MCRequest) bool {
+	return looksValid(req, clientValidators)
+}
+
+func serverLooksValid(req *gomemcached.MCRequest) bool {
+	return looksValid(req, serverValidators)
 }
 
 func mcResponseConsumer(client *mc.Client) {
@@ -141,7 +159,7 @@ func mcResponseConsumer(client *mc.Client) {
 	}
 }
 
-func consumer(name string, ch *bytesource) {
+func clientconsumer(name string, ch *bytesource) {
 	defer childrenWG.Done()
 
 	var client *mc.Client
@@ -165,7 +183,7 @@ func consumer(name string, ch *bytesource) {
 		pkt, err := memcached.ReadPacket(rd)
 		switch {
 		case err == nil:
-			if looksValid(&pkt) {
+			if clientLooksValid(&pkt) {
 				processRequest(name, ch, &pkt, client)
 			} else {
 				log.Printf("Invalid request found: op=%v, klen=%v, bodylen=%v",
@@ -196,6 +214,51 @@ func consumer(name string, ch *bytesource) {
 	log.Printf("Processed %d messages, skipped %s from %s",
 		msgs, humanize.Bytes(dnu), name)
 	ch.reporter <- reportMsg{final: true, dnu: dnu}
+}
+
+func serverconsumer(name string, ch *bytesource) {
+	defer childrenWG.Done()
+
+	log.Printf("Starting server consumer: %v", name)
+
+	msgs := 0
+	rd := bufio.NewReader(ch)
+	dnu := uint64(0)
+	ever := true
+	for ever {
+		pkt, err := memcached.ReadPacket(rd)
+		switch {
+		case err == nil:
+			if serverLooksValid(&pkt) {
+				ch.reporter <- reportMsg{req: &pkt, from: name, ts: ch.ts, isServer: true}
+			} else {
+				log.Printf("Invalid request found: op=%v, klen=%v, bodylen=%v",
+					pkt.Opcode, len(pkt.Key), len(pkt.Body))
+			}
+			msgs++
+		default:
+			if *packetRecovery {
+				skipped, err := readUntil(rd, gomemcached.RES_MAGIC)
+				dnu += skipped
+				if err != nil {
+					ever = false
+					if err != io.EOF {
+						log.Printf("Got an error seeking truth: %v", err)
+					}
+				}
+			} else {
+				ever = false
+			}
+		case err == io.EOF:
+			ever = false
+		}
+	}
+	// Just read the thing to completion.
+	for bytes := range ch.ch {
+		dnu += uint64(len(bytes.b))
+	}
+	log.Printf("Processed %d messages, skipped %s from %s",
+		msgs, humanize.Bytes(dnu), name)
 }
 
 func timeOffset(pktTime, firstPacket, localStart time.Time) time.Duration {

@@ -1,21 +1,27 @@
 package main
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"sync"
 	"text/tabwriter"
+	"time"
 
 	"github.com/dustin/go-humanize"
 	"github.com/dustin/gomemcached"
 )
 
 type reportMsg struct {
-	final bool
-	req   *gomemcached.MCRequest
-	dnu   uint64
+	req      *gomemcached.MCRequest
+	dnu      uint64
+	from     string
+	ts       time.Time
+	isServer bool
+	final    bool
 }
 
 func has(haystack []int, needle int) bool {
@@ -25,6 +31,58 @@ func has(haystack []int, needle int) bool {
 		}
 	}
 	return false
+}
+
+func reportLatency(ch <-chan reportMsg, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	outf, err := os.Create(",report.csv")
+	if err != nil {
+		log.Fatalf("Error creating report file:  %v", err)
+	}
+	defer outf.Close()
+
+	cw := csv.NewWriter(outf)
+	defer cw.Flush()
+
+	cw.Write([]string{"ts", "from", "duration"})
+
+	type fkey struct {
+		name   string
+		opaque uint32
+	}
+	inflight := map[fkey]reportMsg{}
+
+	below, above := 0, 0
+
+	for msg := range ch {
+		if msg.req == nil {
+			continue
+		}
+		k := fkey{msg.from, msg.req.Opaque}
+		if msg.isServer {
+			req, exists := inflight[k]
+			if exists {
+				age := msg.ts.Sub(req.ts)
+				if age > *threshold {
+					above++
+					cw.Write([]string{
+						req.ts.Format(time.RFC3339),
+						req.from,
+						strconv.FormatInt(int64(age), 10),
+					})
+					log.Printf("%v came in %v ago", req.req, age)
+				} else {
+					below++
+				}
+			}
+			delete(inflight, k)
+		} else {
+			inflight[k] = msg
+		}
+	}
+
+	log.Printf("Processed %v packets.  %v above, %v below", above+below, above, below)
 }
 
 func report(ch <-chan reportMsg, wg *sync.WaitGroup) {

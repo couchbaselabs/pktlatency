@@ -24,6 +24,8 @@ var maxBodyLen = flag.Uint("maxBodyLen", uint(memcached.MaxBodyLen),
 var server = flag.String("server", "localhost:11211",
 	"memcached server to connect to")
 var verbose = flag.Bool("v", false, "print out all the things")
+var threshold = flag.Duration("thresh", time.Millisecond*3,
+	"Threshold for reporting performance")
 
 const channelSize = 10000
 
@@ -58,10 +60,13 @@ func stream(filename string, rchan chan<- reportMsg) time.Duration {
 	defer h.Close()
 
 	clients := make(map[string]chan bsinput)
-	servers := make(map[string]bool)
+	servers := make(map[string]chan bsinput)
 
 	defer func() {
 		for _, ch := range clients {
+			close(ch)
+		}
+		for _, ch := range servers {
 			close(ch)
 		}
 	}()
@@ -77,30 +82,39 @@ func stream(filename string, rchan chan<- reportMsg) time.Duration {
 		if tcp != nil {
 			isAck := tcp.Flags&pcap.TCP_ACK != 0
 			sender := fmt.Sprintf("%s:%d", ip.SrcAddr(), tcp.SrcPort)
-			isServer := servers[sender]
-			if tcp.Flags&pcap.TCP_SYN != 0 && isAck {
-				servers[sender] = true
+			_, isServer := servers[sender]
+			if (tcp.Flags&pcap.TCP_SYN != 0 && isAck) || tcp.SrcPort == 11210 {
 				isServer = true
 			}
 
 			if isServer {
-				// Do something clever here.
-			} else {
-				ch := clients[sender]
+				ch := servers[sender]
 				if ch == nil {
 					ch = make(chan bsinput, channelSize)
 					childrenWG.Add(1)
-					go consumer(sender, NewByteSource(ch, rchan))
-					clients[sender] = ch
-					log.Printf("Inferred connect from " + sender)
+					go serverconsumer(sender, NewByteSource(ch, rchan))
+					servers[sender] = ch
 				}
 				if len(pkt.Payload) > 0 {
 					ch <- bsinput{pkt.Time.Time(), pkt.Payload}
 				}
 				if tcp.Flags&(pcap.TCP_SYN|pcap.TCP_RST) != 0 && !isAck {
-					close(clients[sender])
-					delete(clients, sender)
+					close(servers[sender])
+					delete(servers, sender)
 					log.Printf("Disconnect from " + sender)
+				}
+			} else {
+				name := fmt.Sprintf("%s:%d", ip.DestAddr(), tcp.DestPort)
+				ch := clients[sender]
+				if ch == nil {
+					ch = make(chan bsinput, channelSize)
+					childrenWG.Add(1)
+					go clientconsumer(name, NewByteSource(ch, rchan))
+					clients[sender] = ch
+					log.Printf("Inferred connect from " + sender)
+				}
+				if len(pkt.Payload) > 0 {
+					ch <- bsinput{pkt.Time.Time(), pkt.Payload}
 				}
 			}
 		}
@@ -125,7 +139,7 @@ func main() {
 	reportchan := make(chan reportMsg, 100000)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
-	go report(reportchan, &wg)
+	go reportLatency(reportchan, &wg)
 	toff := stream(flag.Arg(0), reportchan)
 	childrenWG.Wait()
 	close(reportchan)
