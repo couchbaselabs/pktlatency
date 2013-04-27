@@ -50,7 +50,10 @@ func reportLatency(ch <-chan reportMsg, wg *sync.WaitGroup) {
 	cw := csv.NewWriter(outf)
 	defer cw.Flush()
 
-	cw.Write([]string{"ts", "from", "duration"})
+	cw.Write([]string{"ts", "from", "op",
+		"reqklen", "reqbodylen",
+		"resklen", "resbodylen",
+		"duration"})
 
 	type fkey struct {
 		name   string
@@ -73,7 +76,11 @@ func reportLatency(ch <-chan reportMsg, wg *sync.WaitGroup) {
 					above++
 					cw.Write([]string{
 						req.ts.Format(time.RFC3339),
-						req.from,
+						req.from, req.req.Opcode.String(),
+						strconv.Itoa(len(req.req.Key)),
+						strconv.Itoa(len(req.req.Body)),
+						strconv.Itoa(len(msg.req.Key)),
+						strconv.Itoa(len(msg.req.Body)),
 						strconv.FormatInt(int64(age), 10),
 					})
 					if *verbose {
