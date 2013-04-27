@@ -66,13 +66,6 @@ func readUntil(r *bufio.Reader, b byte) (skipped uint64, err error) {
 	panic("Unreachable")
 }
 
-func processRequest(name string, ch *bytesource, req *gomemcached.MCRequest) {
-	if *verbose {
-		log.Printf("%v: %v", ch.ts, *req)
-	}
-	ch.reporter <- reportMsg{req: req, from: name, ts: ch.ts}
-}
-
 type validator func(*gomemcached.MCRequest) bool
 
 func allArePrintable(s string) bool {
@@ -148,7 +141,7 @@ func clientconsumer(name string, ch *bytesource) {
 		switch {
 		case err == nil:
 			if clientLooksValid(&pkt) {
-				processRequest(name, ch, &pkt)
+				ch.reporter <- reportMsg{req: &pkt, from: name, ts: ch.ts}
 			} else {
 				log.Printf("Invalid request found: op=%v, klen=%v, bodylen=%v",
 					pkt.Opcode, len(pkt.Key), len(pkt.Body))
