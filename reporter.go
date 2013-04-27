@@ -76,7 +76,9 @@ func reportLatency(ch <-chan reportMsg, wg *sync.WaitGroup) {
 						req.from,
 						strconv.FormatInt(int64(age), 10),
 					})
-					log.Printf("%v came in %v ago", req.req, age)
+					if *verbose {
+						log.Printf("%v came in %v ago", req.req, age)
+					}
 				} else {
 					below++
 				}

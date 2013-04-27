@@ -168,15 +168,15 @@ func clientconsumer(name string, ch *bytesource) {
 	for bytes := range ch.ch {
 		dnu += uint64(len(bytes.b))
 	}
-	log.Printf("Processed %d messages, skipped %s from %s",
-		msgs, humanize.Bytes(dnu), name)
+	if *verbose {
+		log.Printf("Processed %d messages, skipped %s from %s",
+			msgs, humanize.Bytes(dnu), name)
+	}
 	ch.reporter <- reportMsg{final: true, dnu: dnu}
 }
 
 func serverconsumer(name string, ch *bytesource) {
 	defer childrenWG.Done()
-
-	log.Printf("Starting server consumer: %v", name)
 
 	msgs := 0
 	rd := bufio.NewReader(ch)
@@ -189,7 +189,7 @@ func serverconsumer(name string, ch *bytesource) {
 			if serverLooksValid(&pkt) {
 				ch.reporter <- reportMsg{req: &pkt, from: name, ts: ch.ts, isServer: true}
 			} else {
-				log.Printf("Invalid request found: op=%v, klen=%v, bodylen=%v",
+				log.Printf("Invalid response found: op=%v, klen=%v, bodylen=%v",
 					pkt.Opcode, len(pkt.Key), len(pkt.Body))
 			}
 			msgs++
@@ -214,6 +214,8 @@ func serverconsumer(name string, ch *bytesource) {
 	for bytes := range ch.ch {
 		dnu += uint64(len(bytes.b))
 	}
-	log.Printf("Processed %d messages, skipped %s from %s",
-		msgs, humanize.Bytes(dnu), name)
+	if *verbose {
+		log.Printf("Processed %d messages, skipped %s from %s",
+			msgs, humanize.Bytes(dnu), name)
+	}
 }
