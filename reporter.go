@@ -96,7 +96,8 @@ func reportLatency(ch <-chan reportMsg, wg *sync.WaitGroup) {
 		}
 	}
 
-	log.Printf("Processed %v packets.  %v above, %v below", above+below, above, below)
+	log.Printf("Processed %v packets.  %v above, %v below. %v left in flight",
+		above+below, above, below, len(inflight))
 }
 
 func report(ch <-chan reportMsg, wg *sync.WaitGroup) {
