@@ -22,6 +22,8 @@ var verbose = flag.Bool("v", false, "print out all the things")
 var threshold = flag.Duration("thresh", time.Millisecond*3,
 	"Threshold for reporting performance")
 var reportFile = flag.String("report", "", "Path to csv report to produce")
+var minKLen = flag.Int("minkey", 1, "minimum expected size of a key")
+var maxKLen = flag.Int("maxkey", 64, "maximum expected size of a key")
 
 const channelSize = 10000
 

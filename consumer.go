@@ -78,7 +78,7 @@ func allArePrintable(s string) bool {
 }
 
 func saneKey(req *gomemcached.MCRequest) bool {
-	return len(req.Key) == 20 &&
+	return len(req.Key) >= *minKLen && len(req.Key) <= *maxKLen &&
 		utf8.Valid(req.Key) &&
 		allArePrintable(string(req.Key))
 }
