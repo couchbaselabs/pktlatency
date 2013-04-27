@@ -10,11 +10,8 @@ import (
 
 	"github.com/dustin/gomemcached/server"
 	"github.com/dustin/gopcap"
-	"github.com/dustin/replaykit"
 )
 
-var timeScale = flag.Float64("timescale", 1.0,
-	"The device that speeds up and slows down time")
 var packetRecovery = flag.Bool("recover", true,
 	"Attempt to recover from corrupt memcached streams")
 var dumpJson = flag.Bool("dumpjson", false,
@@ -31,28 +28,7 @@ const channelSize = 10000
 
 var childrenWG = sync.WaitGroup{}
 
-type packetEvent struct {
-	pc *pcap.Packet
-}
-
-type pktSrc struct {
-	p *pcap.Pcap
-}
-
-func (pe packetEvent) TS() time.Time {
-	return pe.pc.Time.Time()
-}
-
-func (p *pktSrc) Next() replay.Event {
-	n := p.p.Next()
-	if n == nil {
-		return nil
-	}
-	return packetEvent{n}
-}
-
-// Returns how far off schedule we were
-func stream(filename string, rchan chan<- reportMsg) time.Duration {
+func stream(filename string, rchan chan<- reportMsg) {
 	h, err := pcap.Openoffline(filename)
 	if h == nil {
 		log.Fatalf("Openoffline(%s) failed: %s", filename, err)
@@ -71,12 +47,7 @@ func stream(filename string, rchan chan<- reportMsg) time.Duration {
 		}
 	}()
 
-	psrc := &pktSrc{h}
-
-	r := replay.New(*timeScale)
-
-	return r.Run(psrc, replay.FunctionAction(func(ev replay.Event) {
-		pkt := ev.(packetEvent).pc
+	for pkt := h.Next(); pkt != nil; pkt = h.Next() {
 		pkt.Decode()
 		tcp, ip := pkt.TCP, pkt.IP
 		if tcp != nil {
@@ -118,7 +89,7 @@ func stream(filename string, rchan chan<- reportMsg) time.Duration {
 				}
 			}
 		}
-	}))
+	}
 }
 
 func main() {
@@ -140,15 +111,8 @@ func main() {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go reportLatency(reportchan, &wg)
-	toff := stream(flag.Arg(0), reportchan)
+	stream(flag.Arg(0), reportchan)
 	childrenWG.Wait()
 	close(reportchan)
 	wg.Wait()
-	tlbl := "early"
-	if int64(toff) < 0 {
-		tlbl = "late"
-		toff = 0 - toff
-	}
-	log.Printf("Finished %v %s.", toff, tlbl)
-
 }

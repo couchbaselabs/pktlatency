@@ -260,12 +260,3 @@ func serverconsumer(name string, ch *bytesource) {
 	log.Printf("Processed %d messages, skipped %s from %s",
 		msgs, humanize.Bytes(dnu), name)
 }
-
-func timeOffset(pktTime, firstPacket, localStart time.Time) time.Duration {
-	now := time.Now()
-	pktElapsed := pktTime.Sub(firstPacket)
-	localElapsed := time.Duration(float64(now.Sub(localStart)) * *timeScale)
-
-	return time.Duration(float64(pktElapsed-localElapsed) / *timeScale)
-
-}
