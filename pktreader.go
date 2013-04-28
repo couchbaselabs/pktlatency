@@ -24,6 +24,7 @@ var threshold = flag.Duration("thresh", time.Millisecond*3,
 var reportFile = flag.String("report", "", "Path to csv report to produce")
 var minKLen = flag.Int("minkey", 1, "minimum expected size of a key")
 var maxKLen = flag.Int("maxkey", 64, "maximum expected size of a key")
+var portNum = flag.Int("port", 11210, "mc binary port to identify")
 
 const channelSize = 10000
 
@@ -55,7 +56,8 @@ func stream(filename string, rchan chan<- reportMsg) {
 			isAck := tcp.Flags&pcap.TCP_ACK != 0
 			sender := fmt.Sprintf("%s:%d", ip.SrcAddr(), tcp.SrcPort)
 			_, isServer := servers[sender]
-			if (tcp.Flags&pcap.TCP_SYN != 0 && isAck) || tcp.SrcPort == 11210 {
+			if (tcp.Flags&pcap.TCP_SYN != 0 && isAck) ||
+				tcp.SrcPort == uint16(*portNum) {
 				isServer = true
 			}
 
