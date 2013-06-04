@@ -63,7 +63,6 @@ func readUntil(r *bufio.Reader, b byte) (skipped uint64, err error) {
 			return skipped, nil
 		}
 	}
-	panic("Unreachable")
 }
 
 type validator func(*gomemcached.MCRequest) bool
