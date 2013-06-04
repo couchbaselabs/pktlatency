@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dustin/gomemcached/server"
+	"github.com/dustin/gomemcached"
 	"github.com/dustin/gopcap"
 )
 
@@ -16,7 +16,7 @@ var packetRecovery = flag.Bool("recover", true,
 	"Attempt to recover from corrupt memcached streams")
 var dumpJson = flag.Bool("dumpjson", false,
 	"Dump op -> vbucket map discovered in trace")
-var maxBodyLen = flag.Uint("maxBodyLen", uint(memcached.MaxBodyLen),
+var maxBodyLen = flag.Uint("maxBodyLen", uint(gomemcached.MaxBodyLen),
 	"Maximum body length of a valid packet")
 var verbose = flag.Bool("v", false, "print out all the things")
 var threshold = flag.Duration("thresh", time.Millisecond*3,
@@ -109,7 +109,7 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
-	memcached.MaxBodyLen = uint32(*maxBodyLen)
+	gomemcached.MaxBodyLen = int(*maxBodyLen)
 	reportchan := make(chan reportMsg, 100000)
 	wg := sync.WaitGroup{}
 	wg.Add(1)
