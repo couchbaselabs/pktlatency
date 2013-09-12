@@ -14,8 +14,6 @@ import (
 
 var packetRecovery = flag.Bool("recover", true,
 	"Attempt to recover from corrupt memcached streams")
-var dumpJson = flag.Bool("dumpjson", false,
-	"Dump op -> vbucket map discovered in trace")
 var maxBodyLen = flag.Uint("maxBodyLen", uint(gomemcached.MaxBodyLen),
 	"Maximum body length of a valid packet")
 var verbose = flag.Bool("v", false, "print out all the things")
