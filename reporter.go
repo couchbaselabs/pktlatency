@@ -24,7 +24,7 @@ type reportMsg struct {
 func reportLatency(ch <-chan reportMsg, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	var outf io.Writer
+	outf := io.Writer(os.Stdout)
 	if *reportFile != "" {
 		f, err := os.Create(*reportFile)
 		if err != nil {
